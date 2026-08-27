@@ -1,0 +1,18 @@
+# Render.com 用の設定ファイル（Blueprint）
+# Renderで「New +」→「Blueprint」からこのリポジトリを選ぶと、
+# この内容にそって自動でサービスが作成されます。
+#
+# SITE_PASSWORD は sync:false のため、Render側の画面で手動入力を求められます
+# （このファイルにパスワードそのものは書き込まれません）。
+services:
+  - type: web
+    name: land-finder
+    env: docker
+    plan: free
+    envVars:
+      - key: SITE_USERNAME
+        value: guest
+      - key: SITE_PASSWORD
+        sync: false
+      - key: SITE_ENABLED
+        value: "true"
