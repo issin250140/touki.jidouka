@@ -2,7 +2,7 @@
 # Renderで「New +」→「Blueprint」からこのリポジトリを選ぶと、
 # この内容にそって自動でサービスが作成されます。
 #
-# SITE_PASSWORD は sync:false のため、Render側の画面で手動入力を求められます
+# SITE_USERS は sync:false のため、Render側の画面で手動入力を求められます
 # （このファイルにパスワードそのものは書き込まれません）。
 services:
   - type: web
@@ -10,9 +10,8 @@ services:
     env: docker
     plan: free
     envVars:
-      - key: SITE_USERNAME
-        value: guest
-      - key: SITE_PASSWORD
+      # 「ユーザー名:パスワード」をカンマ区切りで。例: tanaka:abc123,sato:xyz789
+      - key: SITE_USERS
         sync: false
       - key: SITE_ENABLED
         value: "true"

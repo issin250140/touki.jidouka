@@ -60,21 +60,24 @@ def parse_latlon(text: str) -> tuple[float, float]:
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
-# アクセス制限（パスワード保護 + いつでも止められるスイッチ）
+# アクセス制限（人ごとのパスワード保護 + いつでも止められるスイッチ）
 # ---------------------------------------------------------------------------
-# SITE_PASSWORD: このパスワードを知っている人だけがアクセスできる。
-#                共有したい相手にだけパスワードを伝え、やめたいときは
-#                この環境変数を変更するだけで、それまでの相手も含めて
-#                全員のアクセスを即座に無効化できる。
-# SITE_ENABLED : "false" にすると、パスワードを知っていても誰もアクセス
-#                できない「一時停止」状態になる（ホスティング側の環境変数を
-#                変更するだけで、コードの変更・再デプロイ不要）。
-SITE_USERNAME = os.environ.get("SITE_USERNAME", "guest")
-SITE_PASSWORD = os.environ.get("SITE_PASSWORD", "")
+# SITE_USERS  : 「ユーザー名:パスワード」のペアをカンマ区切りで並べたもの。
+#               人ごとに別々のユーザー名・パスワードを渡せるので、
+#               特定の1人だけアクセスを止める、といったことができる。
+#               例: "tanaka:abc123,sato:xyz789"
+#               → tanakaさんのアクセスだけ止めたい場合は、この値から
+#                 "tanaka:abc123," の部分を削除して保存するだけでよい。
+#                 sato さんは何も変わらず使い続けられる。
+# SITE_USERNAME / SITE_PASSWORD : 従来の「全員共通の1組」の設定（互換用）。
+#               SITE_USERS と併用でき、両方の条件のどちらかを満たせば入れる。
+# SITE_ENABLED : "false" にすると、誰の・どのパスワードでも入れない
+#               「一時停止」状態になる（ホスティング側の環境変数を
+#               変更するだけで、コードの変更・再デプロイ不要）。
 SITE_ENABLED = os.environ.get("SITE_ENABLED", "true").strip().lower() not in ("false", "0", "off")
 # ホスティング環境（Render/Railway/Fly.io等）は起動時にPORTを自動的に設定するため、
 # それを「公開環境かどうか」の目印として使う。ローカルでの動作確認時は
-# SITE_PASSWORD を設定しない限り、これまで通りパスワード無しで使える。
+# SITE_USERS / SITE_PASSWORD を設定しない限り、これまで通りパスワード無しで使える。
 IS_DEPLOYED = "PORT" in os.environ
 
 MAINTENANCE_HTML = """<!doctype html><html lang="ja"><head><meta charset="utf-8">
@@ -85,14 +88,42 @@ MAINTENANCE_HTML = """<!doctype html><html lang="ja"><head><meta charset="utf-8"
 </body></html>"""
 
 
+def _load_users() -> dict[str, str]:
+    """環境変数から「ユーザー名 → パスワード」の対応表を作る。
+
+    毎リクエスト読み直すので、環境変数を変えて再デプロイすれば
+    次のリクエストからすぐに反映される。
+    """
+    users: dict[str, str] = {}
+
+    legacy_username = os.environ.get("SITE_USERNAME", "guest")
+    legacy_password = os.environ.get("SITE_PASSWORD", "")
+    if legacy_password:
+        users[legacy_username] = legacy_password
+
+    raw = os.environ.get("SITE_USERS", "")
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair or ":" not in pair:
+            continue
+        username, password = pair.split(":", 1)
+        username, password = username.strip(), password.strip()
+        if username and password:
+            users[username] = password
+
+    return users
+
+
 def _check_password(username: str, password: str) -> bool:
-    if not SITE_PASSWORD:
-        return False  # パスワード未設定の場合は誰も入れない（安全側デフォルト）
-    return secrets.compare_digest(username, SITE_USERNAME) and secrets.compare_digest(password, SITE_PASSWORD)
+    users = _load_users()
+    expected = users.get(username)
+    if expected is None:
+        return False
+    return secrets.compare_digest(password, expected)
 
 
 def _auth_required() -> bool:
-    return IS_DEPLOYED or bool(SITE_PASSWORD)
+    return IS_DEPLOYED or bool(_load_users())
 
 
 @app.before_request
@@ -298,17 +329,20 @@ def download():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    users = _load_users()
 
     if IS_DEPLOYED:
-        if not SITE_PASSWORD:
-            print("警告: SITE_PASSWORD が設定されていません。公開環境では誰もアクセスできません。")
+        if not users:
+            print("警告: SITE_USERS / SITE_PASSWORD が設定されていません。公開環境では誰もアクセスできません。")
+        else:
+            print(f"アクセスできるユーザー: {', '.join(users)}")
         print(f"起動しました（公開モード / ポート:{port}）。")
         app.run(host="0.0.0.0", port=port, debug=False, threaded=False)
     else:
         url = f"http://127.0.0.1:{port}"
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
         print(f"起動しました。ブラウザで {url} を開いてください。")
-        if SITE_PASSWORD:
-            print(f"パスワード保護が有効です（ユーザー名: {SITE_USERNAME}）。")
+        if users:
+            print(f"パスワード保護が有効です（ユーザー: {', '.join(users)}）。")
         print("終了するには、このウィンドウで Ctrl+C を押してください。")
         app.run(host="127.0.0.1", port=port, debug=False, threaded=False)
