@@ -9,6 +9,7 @@ services:
     name: land-finder
     env: docker
     plan: free
+    region: singapore  # 日本(農地ナビ)に近いリージョンを使う
     envVars:
       # 「ユーザー名:パスワード」をカンマ区切りで。例: tanaka:abc123,sato:xyz789
       - key: SITE_USERS
