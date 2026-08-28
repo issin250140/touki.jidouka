@@ -30,7 +30,7 @@ import webbrowser
 from datetime import datetime
 from functools import wraps
 
-from flask import Flask, request, redirect, url_for, send_file, render_template_string, Response
+from flask import Flask, request, redirect, url_for, send_file, render_template_string, session
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
 
 from land_finder import (
@@ -58,6 +58,11 @@ def parse_latlon(text: str) -> tuple[float, float]:
 
 
 app = Flask(__name__)
+# セッションCookieの署名用の鍵。環境変数 SECRET_KEY を設定すれば
+# 再デプロイ後もログイン状態を保てる（未設定なら起動のたびにランダム生成
+# され、再デプロイ時に全員ログインし直しになるだけで、動作上の問題はない）。
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 24 * 30  # 30日間ログイン状態を保持
 
 # ---------------------------------------------------------------------------
 # アクセス制限（人ごとのパスワード保護 + いつでも止められるスイッチ）
@@ -126,6 +131,10 @@ def _auth_required() -> bool:
     return IS_DEPLOYED or bool(_load_users())
 
 
+# ログイン不要でアクセスできるルート（ログイン画面自体・静的ファイルなど）
+_PUBLIC_ENDPOINTS = {"login", "static"}
+
+
 @app.before_request
 def _access_control():
     if not SITE_ENABLED:
@@ -134,14 +143,14 @@ def _access_control():
     if not _auth_required():
         return  # ローカルで動かしていて、かつパスワード未設定ならそのまま使える
 
-    auth = request.authorization
-    if not auth or not _check_password(auth.username or "", auth.password or ""):
-        return Response(
-            "パスワードが必要です。共有元から伝えられたユーザー名・パスワードを入力してください。\n"
-            "Authentication required.",
-            401,
-            {"WWW-Authenticate": 'Basic realm="Land Finder"'},
-        )
+    if request.endpoint in _PUBLIC_ENDPOINTS:
+        return
+
+    username = session.get("user")
+    # SITE_USERSから後で削除された人は、ログイン済みでも次のアクセスで弾かれる
+    if not username or username not in _load_users():
+        session.clear()
+        return redirect(url_for("login", next=request.path))
 
 
 LOCK = threading.Lock()
@@ -205,6 +214,109 @@ def run_search(lat: float, lon: float) -> dict:
 # ---------------------------------------------------------------------------
 # 画面
 # ---------------------------------------------------------------------------
+LOGIN_TEMPLATE = """
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>ログイン - 土地探しツール</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1f4d3a 0%, #2f6f4f 45%, #6fae7a 100%);
+    padding: 1.5rem;
+  }
+  .card {
+    background: #fff;
+    width: 100%;
+    max-width: 360px;
+    border-radius: 16px;
+    padding: 2.4rem 2rem 2rem;
+    box-shadow: 0 20px 50px rgba(0, 40, 20, 0.25);
+    text-align: center;
+  }
+  .emoji { font-size: 2.4rem; margin-bottom: 0.4rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 0.2rem; color: #1f4d3a; }
+  .sub { color: #888; font-size: 0.8rem; margin-bottom: 1.6rem; }
+  .field { text-align: left; margin-bottom: 1rem; }
+  label { display: block; font-size: 0.78rem; color: #555; margin-bottom: 0.3rem; }
+  input[type=text], input[type=password] {
+    width: 100%;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid #d7ddd9;
+    border-radius: 8px;
+    font-size: 1rem;
+    background: #f8faf8;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  input[type=text]:focus, input[type=password]:focus {
+    outline: none;
+    border-color: #2f6f4f;
+    background: #fff;
+  }
+  button {
+    width: 100%;
+    padding: 0.75rem;
+    border: none;
+    border-radius: 8px;
+    background: #2f6f4f;
+    color: #fff;
+    font-size: 0.98rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.4rem;
+    transition: background 0.15s;
+  }
+  button:hover { background: #235a3f; }
+  .error {
+    background: #fdecec;
+    color: #b3413a;
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.82rem;
+    margin-bottom: 1rem;
+    text-align: left;
+  }
+  .footer-note { margin-top: 1.6rem; color: #aaa; font-size: 0.72rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="emoji">🌾</div>
+    <h1>土地探しツール</h1>
+    <div class="sub">共有された ユーザー名・パスワード でログインしてください</div>
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('login') }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <div class="field">
+        <label for="username">ユーザー名</label>
+        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">パスワード</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit">ログイン</button>
+    </form>
+
+    <div class="footer-note">Private access only</div>
+  </div>
+</body>
+</html>
+"""
+
 PAGE_TEMPLATE = """
 <!doctype html>
 <html lang="ja">
@@ -232,10 +344,19 @@ PAGE_TEMPLATE = """
   .table-wrap { overflow-x: auto; }
   .note-warn { color: #a35b00; }
   .note-ok { color: #2f6f4f; }
+  .topbar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
+  .user-badge { font-size: 0.8rem; color: #666; }
+  .user-badge a { color: #2f6f4f; text-decoration: none; margin-left: 0.6rem; }
+  .user-badge a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
-  <h1>土地探しツール</h1>
+  <div class="topbar">
+    <h1>土地探しツール</h1>
+    {% if current_user %}
+    <div class="user-badge">{{ current_user }} さん<a href="{{ url_for('logout') }}">ログアウト</a></div>
+    {% endif %}
+  </div>
   <div class="sub">緯度経度を入力すると、住所と農地情報（所在地番・地目・面積・農振区分）を自動で調べます。</div>
 
   <form class="search" method="post" action="{{ url_for('search') }}">
@@ -279,7 +400,41 @@ PAGE_TEMPLATE = """
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template_string(PAGE_TEMPLATE, results=RESULTS, columns=DISPLAY_COLUMNS)
+    return render_template_string(
+        PAGE_TEMPLATE, results=RESULTS, columns=DISPLAY_COLUMNS,
+        current_user=session.get("user"),
+    )
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    next_url = request.values.get("next") or url_for("index")
+    # オープンリダイレクト対策: サイト内の絶対パスのみ許可
+    if not next_url.startswith("/"):
+        next_url = url_for("index")
+
+    if request.method == "GET":
+        return render_template_string(LOGIN_TEMPLATE, error=None, next_url=next_url)
+
+    username = request.form.get("username", "")
+    password = request.form.get("password", "")
+    if _check_password(username, password):
+        session.clear()
+        session.permanent = True
+        session["user"] = username
+        return redirect(next_url)
+
+    return render_template_string(
+        LOGIN_TEMPLATE,
+        error="ユーザー名またはパスワードが違います。",
+        next_url=next_url,
+    )
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/search", methods=["POST"])
