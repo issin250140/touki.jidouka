@@ -322,29 +322,42 @@ PAGE_TEMPLATE = """
 <meta charset="utf-8">
 <title>土地探しツール</title>
 <style>
-  body { font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; background: #f5f6f8; color: #222; margin: 0; padding: 2rem; }
-  h1 { font-size: 1.4rem; margin-bottom: 0.3rem; }
-  .sub { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
-  form.search { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 1.2rem 1.5rem; display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.5rem; }
-  .field { display: flex; flex-direction: column; gap: 0.3rem; }
-  label { font-size: 0.8rem; color: #555; }
-  input[type=text] { padding: 0.5rem 0.6rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; width: 12rem; }
-  button { padding: 0.55rem 1.2rem; border: none; border-radius: 6px; background: #2f6f4f; color: #fff; font-size: 0.95rem; cursor: pointer; }
+  body { font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif; background: #f5f6f8; color: #1a1a1a; margin: 0; padding: 2rem; font-weight: 500; }
+  h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.3rem; }
+  .sub { color: #555; font-size: 0.9rem; font-weight: 500; margin-bottom: 1.5rem; }
+  form.search {
+    background: #fff; border: 2px solid #2f6f4f; border-radius: 12px; padding: 1.5rem 1.7rem;
+    display: flex; gap: 1.2rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.5rem;
+    box-shadow: 0 6px 20px rgba(47, 111, 79, 0.12);
+  }
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+  label { font-size: 0.85rem; font-weight: 700; color: #2f6f4f; }
+  input[type=text] {
+    padding: 0.85rem 1rem; border: 2px solid #bcd6c5; border-radius: 8px; font-size: 1.15rem;
+    font-weight: 600; width: 22rem; max-width: 100%; background: #f6faf7; color: #1a1a1a;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  }
+  input[type=text]:focus {
+    outline: none; border-color: #2f6f4f; background: #fff;
+    box-shadow: 0 0 0 4px rgba(47, 111, 79, 0.15);
+  }
+  input[type=text]::placeholder { color: #94a89c; font-weight: 500; }
+  button { padding: 0.7rem 1.4rem; border: none; border-radius: 8px; background: #2f6f4f; color: #fff; font-size: 1.02rem; font-weight: 700; cursor: pointer; }
   button:hover { background: #255a3f; }
-  button.secondary { background: #888; }
-  button.secondary:hover { background: #666; }
+  button.secondary { background: #777; font-weight: 600; }
+  button.secondary:hover { background: #5f5f5f; }
   .actions { margin-bottom: 0.8rem; display: flex; gap: 0.6rem; }
-  table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; font-size: 0.85rem; }
-  th, td { padding: 0.5rem 0.7rem; border-bottom: 1px solid #eee; text-align: left; white-space: nowrap; }
-  th { background: #eef2ef; color: #333; position: sticky; top: 0; }
+  table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; font-size: 0.88rem; font-weight: 500; }
+  th, td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #eee; text-align: left; white-space: nowrap; }
+  th { background: #eef2ef; color: #1a2e22; font-weight: 700; position: sticky; top: 0; }
   tr:hover td { background: #fafcfb; }
-  .empty { color: #888; padding: 2rem; text-align: center; background: #fff; border: 1px dashed #ccc; border-radius: 8px; }
+  .empty { color: #666; font-weight: 500; padding: 2rem; text-align: center; background: #fff; border: 1px dashed #ccc; border-radius: 8px; }
   .table-wrap { overflow-x: auto; }
-  .note-warn { color: #a35b00; }
-  .note-ok { color: #2f6f4f; }
+  .note-warn { color: #a35b00; font-weight: 600; }
+  .note-ok { color: #2f6f4f; font-weight: 600; }
   .topbar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; }
-  .user-badge { font-size: 0.8rem; color: #666; }
-  .user-badge a { color: #2f6f4f; text-decoration: none; margin-left: 0.6rem; }
+  .user-badge { font-size: 0.85rem; font-weight: 600; color: #555; }
+  .user-badge a { color: #2f6f4f; text-decoration: none; margin-left: 0.6rem; font-weight: 700; }
   .user-badge a:hover { text-decoration: underline; }
 </style>
 </head>
