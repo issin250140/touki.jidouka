@@ -26,9 +26,11 @@ import os
 import re
 import secrets
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from functools import wraps
+from zoneinfo import ZoneInfo
 
 from flask import Flask, request, redirect, url_for, send_file, render_template_string, session
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeoutError
@@ -151,6 +153,57 @@ def _access_control():
     if not username or username not in _load_users():
         session.clear()
         return redirect(url_for("login", next=request.path))
+
+
+# ---------------------------------------------------------------------------
+# アクセス頻度の制限（農地ナビへの負荷を抑えるための、ユーザーごとの自主規制）
+# ---------------------------------------------------------------------------
+# 検索1回につき、農地ナビへは裏で十数件のリクエストが発生するため、
+# 個人の土地探し用途として無理のない範囲に抑える。
+# 上限は「ユーザー名ごと」に数える（同じ人が何度ログインし直しても引き継がれる）。
+MIN_SEARCH_INTERVAL_SEC = int(os.environ.get("MIN_SEARCH_INTERVAL_SEC", "30"))
+MAX_SEARCHES_PER_DAY = int(os.environ.get("MAX_SEARCHES_PER_DAY", "50"))
+JST = ZoneInfo("Asia/Tokyo")
+
+_usage_lock = threading.Lock()
+_usage: dict[str, dict] = {}  # ユーザー名 -> {"date": 日付, "count": 本日の件数, "last_at": 直近検索時刻}
+
+
+def _check_rate_limit(username: str) -> str | None:
+    """呼び出し制限を確認する。問題なければNone、引っかかれば理由の文言を返す。
+
+    実際に呼び出し回数を消費するのはここだけなので、ここを通らない限り
+    農地ナビへは一切アクセスしない。
+    """
+    now = time.time()
+    today = datetime.now(JST).date()
+    with _usage_lock:
+        entry = _usage.setdefault(username, {"date": today, "count": 0, "last_at": 0.0})
+        if entry["date"] != today:
+            entry["date"] = today
+            entry["count"] = 0
+
+        wait = MIN_SEARCH_INTERVAL_SEC - (now - entry["last_at"])
+        if wait > 0:
+            return f"前回の検索から間隔が短すぎます。あと{int(wait) + 1}秒待ってからもう一度お試しください。"
+
+        if entry["count"] >= MAX_SEARCHES_PER_DAY:
+            return f"本日の検索上限（{MAX_SEARCHES_PER_DAY}件・{username}さん分）に達しました。日本時間の日付が変わるとリセットされます。"
+
+        entry["count"] += 1
+        entry["last_at"] = now
+        return None
+
+
+def _usage_status(username: str) -> str:
+    """画面表示用に、本日あと何件使えるかを返す。"""
+    if not username:
+        return ""
+    today = datetime.now(JST).date()
+    with _usage_lock:
+        entry = _usage.get(username)
+        count = entry["count"] if entry and entry["date"] == today else 0
+    return f"本日 {count}/{MAX_SEARCHES_PER_DAY}件"
 
 
 LOCK = threading.Lock()
@@ -365,7 +418,7 @@ PAGE_TEMPLATE = """
   <div class="topbar">
     <h1>土地探しツール</h1>
     {% if current_user %}
-    <div class="user-badge">{{ current_user }} さん<a href="{{ url_for('logout') }}">ログアウト</a></div>
+    <div class="user-badge">{{ current_user }} さん（{{ usage_status }}）<a href="{{ url_for('logout') }}">ログアウト</a></div>
     {% endif %}
   </div>
   <div class="sub">緯度経度を入力すると、住所と農地情報（所在地番・地目・面積・農振区分）を自動で調べます。</div>
@@ -411,9 +464,10 @@ PAGE_TEMPLATE = """
 
 @app.route("/", methods=["GET"])
 def index():
+    username = session.get("user")
     return render_template_string(
         PAGE_TEMPLATE, results=RESULTS, columns=DISPLAY_COLUMNS,
-        current_user=session.get("user"),
+        current_user=username, usage_status=_usage_status(username),
     )
 
 
@@ -462,6 +516,20 @@ def search():
                 "note": f"入力形式が正しくありません（例: 37.7700, 139.0500）: 「{raw}」",
             })
         return redirect(url_for("index"))
+
+    # ユーザーごとの利用制限（未ログインのローカル動作時はチェックしない）
+    username = session.get("user")
+    if username:
+        limit_reason = _check_rate_limit(username)
+        if limit_reason:
+            with LOCK:
+                RESULTS.insert(0, {
+                    "searched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "lat": lat, "lon": lon, "address": "", "所在地番": "", "地目": "",
+                    "面積(m2)": "", "農振区分": "", "距離m": "", "近隣区画数": "",
+                    "note": limit_reason,
+                })
+            return redirect(url_for("index"))
 
     with LOCK:
         row = run_search(lat, lon)
