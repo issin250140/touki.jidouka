@@ -231,7 +231,7 @@ LOGIN_TEMPLATE = """
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #1f4d3a 0%, #2f6f4f 45%, #6fae7a 100%);
+    background: linear-gradient(135deg, #2f9e64 0%, #4cbf82 45%, #92e6ae 100%);
     padding: 1.5rem;
   }
   .card {
@@ -240,11 +240,10 @@ LOGIN_TEMPLATE = """
     max-width: 360px;
     border-radius: 16px;
     padding: 2.4rem 2rem 2rem;
-    box-shadow: 0 20px 50px rgba(0, 40, 20, 0.25);
+    box-shadow: 0 20px 50px rgba(0, 60, 30, 0.2);
     text-align: center;
   }
-  .emoji { font-size: 2.4rem; margin-bottom: 0.4rem; }
-  h1 { font-size: 1.25rem; margin: 0 0 0.2rem; color: #1f4d3a; }
+  h1 { font-size: 1.25rem; margin: 0 0 0.2rem; color: #1f7a4d; }
   .sub { color: #888; font-size: 0.8rem; margin-bottom: 1.6rem; }
   .field { text-align: left; margin-bottom: 1rem; }
   label { display: block; font-size: 0.78rem; color: #555; margin-bottom: 0.3rem; }
@@ -259,7 +258,7 @@ LOGIN_TEMPLATE = """
   }
   input[type=text]:focus, input[type=password]:focus {
     outline: none;
-    border-color: #2f6f4f;
+    border-color: #3aab6f;
     background: #fff;
   }
   button {
@@ -267,7 +266,7 @@ LOGIN_TEMPLATE = """
     padding: 0.75rem;
     border: none;
     border-radius: 8px;
-    background: #2f6f4f;
+    background: #3aab6f;
     color: #fff;
     font-size: 0.98rem;
     font-weight: 600;
@@ -275,7 +274,7 @@ LOGIN_TEMPLATE = """
     margin-top: 0.4rem;
     transition: background 0.15s;
   }
-  button:hover { background: #235a3f; }
+  button:hover { background: #2f9460; }
   .error {
     background: #fdecec;
     color: #b3413a;
@@ -290,9 +289,8 @@ LOGIN_TEMPLATE = """
 </head>
 <body>
   <div class="card">
-    <div class="emoji">🌾</div>
     <h1>土地探しツール</h1>
-    <div class="sub">共有された ユーザー名・パスワード でログインしてください</div>
+    <div class="sub">共有された ユーザー名・パスワード で<br>ログインしてください</div>
 
     {% if error %}
     <div class="error">{{ error }}</div>
