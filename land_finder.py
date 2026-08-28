@@ -171,24 +171,26 @@ def lookup_nouchi_navi(page, lat: float, lon: float, address: str) -> dict:
     page.goto(NOUCHI_URL, wait_until="load")
     page.wait_for_function(JS_FIND_GEOCODER, timeout=20000)
     # 地図アプリの初期化(最初の位置での区画データ読み込み)が終わるまで少し待つ
-    page.wait_for_timeout(2000)
+    # （公開サーバーは海外リージョン経由で農地ナビ(国内)にアクセスするため、
+    #   手元の開発環境より通信・処理に時間がかかる。余裕を持たせている）
+    page.wait_for_timeout(3000)
 
     # 住所検索を一度実行して、地図の「移動→区画データ取得」の仕組みを起動させる
     # （検索がヒットしなくても、この後の flyTo で正しい座標のデータが読み込まれる）
     page.evaluate(JS_QUERY_ADDRESS, address)
-    page.wait_for_timeout(2500)
+    page.wait_for_timeout(4000)
 
     # 本来の（正確な）座標へズームレベル18でジャンプ
     page.evaluate(JS_FLYTO, [lon, lat, NOUCHI_ZOOM])
 
     # 区画データの読み込み(非同期)が完了するまでポーリングして待つ
-    deadline = time.time() + 8.0
+    deadline = time.time() + 15.0
     while time.time() < deadline:
         if page.evaluate(JS_COUNT_PARCELS) > 0:
             break
-        time.sleep(0.4)
+        time.sleep(0.5)
     else:
-        page.wait_for_timeout(1000)  # データが本当に0件の場合の最終確認用の猶予
+        page.wait_for_timeout(2000)  # データが本当に0件の場合の最終確認用の猶予
 
     parcels = page.evaluate(JS_NEARBY_PARCELS, [lon, lat])
 
