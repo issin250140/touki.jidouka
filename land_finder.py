@@ -71,6 +71,21 @@ USER_AGENT = (
 )
 STEALTH_INIT_SCRIPT = "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
 
+# 地図の動作に不要な画像・フォント・動画の読み込みをブロックし、
+# 非力な環境（無料ホスティング等）でも処理を軽くするための設定。
+# CSS(stylesheet)は地図の表示サイズ計算に必要なため止めない。
+_BLOCKED_RESOURCE_TYPES = {"image", "font", "media"}
+
+
+def block_heavy_resources(context) -> None:
+    def _handler(route):
+        if route.request.resource_type in _BLOCKED_RESOURCE_TYPES:
+            route.abort()
+        else:
+            route.continue_()
+
+    context.route("**/*", _handler)
+
 
 # ---------------------------------------------------------------------------
 # 1. 座標 -> 住所（逆ジオコーディング）
@@ -281,6 +296,7 @@ def main():
         browser = p.chromium.launch(headless=not args.show_browser)
         context = browser.new_context(viewport={"width": 1280, "height": 900}, user_agent=USER_AGENT)
         context.add_init_script(STEALTH_INIT_SCRIPT)
+        block_heavy_resources(context)
         page = context.new_page()
 
         for i, (lat, lon) in enumerate(points):

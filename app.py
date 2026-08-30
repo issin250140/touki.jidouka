@@ -40,6 +40,7 @@ from land_finder import (
     lookup_nouchi_navi,
     USER_AGENT,
     STEALTH_INIT_SCRIPT,
+    block_heavy_resources,
 )
 
 COORD_SPLIT_RE = re.compile(r"[,\s、，]+")
@@ -239,6 +240,7 @@ def get_page():
         _browser = _playwright.chromium.launch(headless=True)
         _context = _browser.new_context(viewport={"width": 1280, "height": 900}, user_agent=USER_AGENT)
         _context.add_init_script(STEALTH_INIT_SCRIPT)
+        block_heavy_resources(_context)
         _page = _context.new_page()
     return _page
 
