@@ -144,6 +144,14 @@ JS_FLYTO = """
 }
 """
 
+JS_NUDGE = """
+() => {
+    // 地図を1ピクセルだけ動かして戻す（moveendを再発生させ、農地データの取得をやり直させる）
+    map.mapCtrl.panBy([1, 0], {duration: 0});
+    map.mapCtrl.panBy([-1, 0], {duration: 0});
+}
+"""
+
 JS_COUNT_PARCELS = """
 () => map.mapCtrl.queryRenderedFeatures(undefined, {layers: ['noutiPolygon_fill']}).length
 """
@@ -268,14 +276,23 @@ def _lookup_inner(page, lat, lon, address, bad, t0, pending, logs, bodies) -> di
     # 本来の（正確な）座標へズームレベル18でジャンプ
     page.evaluate(JS_FLYTO, [lon, lat, NOUCHI_ZOOM])
 
-    # 区画データの読み込み(非同期)が完了するまでポーリングして待つ
-    deadline = time.time() + 15.0
+    # 区画データの読み込み(非同期)が完了するまでポーリングして待つ。
+    # 農地ナビのアプリは、地図の移動が終わった時に農地データを取得する仕組みだが、
+    # 非力なサーバーでは「最後の移動」での取得を取りこぼすことがある。
+    # データが来ない場合は、地図をごくわずかに動かして取得処理をやり直させる。
+    start = time.time()
+    deadline = start + 24.0
+    nudges = 0
     while time.time() < deadline:
         if page.evaluate(JS_COUNT_PARCELS) > 0:
             break
+        elapsed = time.time() - start
+        if nudges < 3 and elapsed >= 6.0 * (nudges + 1):
+            page.evaluate(JS_NUDGE)
+            nudges += 1
         time.sleep(0.5)
     else:
-        page.wait_for_timeout(2000)  # データが本当に0件の場合の最終確認用の猶予
+        page.wait_for_timeout(1000)
 
     parcels = page.evaluate(JS_NEARBY_PARCELS, [lon, lat])
 
@@ -284,7 +301,7 @@ def _lookup_inner(page, lat, lon, address, bad, t0, pending, logs, bodies) -> di
             st = page.evaluate(JS_DIAG_STATE)
         except Exception as e:  # noqa: BLE001
             st = f"state取得失敗:{e}"
-        diag = f"[診断 {time.time() - t0:.0f}秒 state={st} 失敗通信={len(bad)}件 {bad[:3]} 未完了通信={len(pending)}件 {list(pending.values())[:4]} 応答サイズ={bodies[-6:]} ログ末尾={logs[-4:]}]"
+        diag = f"[診断 {time.time() - t0:.0f}秒 state={st} nudge={nudges}回 失敗通信={len(bad)}件 {bad[:3]} 未完了通信={len(pending)}件 {list(pending.values())[:4]} 応答サイズ={bodies[-6:]} ログ末尾={logs[-4:]}]"
         return {
             "所在地番": "", "地目": "", "面積(m2)": "", "農振区分": "",
             "距離m": "", "近隣区画数": 0,
