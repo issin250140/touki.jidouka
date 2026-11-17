@@ -204,6 +204,7 @@ def lookup_nouchi_navi(page, lat: float, lon: float, address: str) -> dict:
     bad = []
     pending = {}
     logs = []
+    bodies = []
 
     def _short(u):
         return u.split("?")[0][-34:]
@@ -218,6 +219,13 @@ def lookup_nouchi_navi(page, lat: float, lon: float, address: str) -> dict:
     def _on_response(resp):
         if resp.status >= 400 and "maff.go.jp" in resp.url:
             bad.append(f"{resp.status} {_short(resp.url)}")
+        # 農地データを返す通信(Reload/検索)の中身の大きさを記録する
+        if "maff.go.jp" in resp.url and ("Reload" in resp.url or "SearchAddress" in resp.url):
+            try:
+                body = resp.text()
+                bodies.append(f"{_short(resp.url)[-12:]} {resp.status} {len(body)}B")
+            except Exception as e:  # noqa: BLE001
+                bodies.append(f"{_short(resp.url)[-12:]} body取得失敗")
 
     def _on_failed(req):
         pending.pop(id(req), None)
@@ -237,14 +245,14 @@ def lookup_nouchi_navi(page, lat: float, lon: float, address: str) -> dict:
     page.on("requestfailed", _on_failed)
     t0 = time.time()
     try:
-        return _lookup_inner(page, lat, lon, address, bad, t0, pending, logs)
+        return _lookup_inner(page, lat, lon, address, bad, t0, pending, logs, bodies)
     finally:
         for ev, fn in (("response", _on_response), ("requestfailed", _on_failed), ("request", _on_request),
                        ("requestfinished", _done), ("console", _on_console)):
             page.remove_listener(ev, fn)
 
 
-def _lookup_inner(page, lat, lon, address, bad, t0, pending, logs) -> dict:
+def _lookup_inner(page, lat, lon, address, bad, t0, pending, logs, bodies) -> dict:
     page.goto(NOUCHI_URL, wait_until="load")
     page.wait_for_function(JS_FIND_GEOCODER, timeout=20000)
     # 地図アプリの初期化(最初の位置での区画データ読み込み)が終わるまで少し待つ
@@ -276,7 +284,7 @@ def _lookup_inner(page, lat, lon, address, bad, t0, pending, logs) -> dict:
             st = page.evaluate(JS_DIAG_STATE)
         except Exception as e:  # noqa: BLE001
             st = f"state取得失敗:{e}"
-        diag = f"[診断 {time.time() - t0:.0f}秒 state={st} 失敗通信={len(bad)}件 {bad[:3]} 未完了通信={len(pending)}件 {list(pending.values())[:4]} ログ末尾={logs[-8:]}]"
+        diag = f"[診断 {time.time() - t0:.0f}秒 state={st} 失敗通信={len(bad)}件 {bad[:3]} 未完了通信={len(pending)}件 {list(pending.values())[:4]} 応答サイズ={bodies[-6:]} ログ末尾={logs[-4:]}]"
         return {
             "所在地番": "", "地目": "", "面積(m2)": "", "農振区分": "",
             "距離m": "", "近隣区画数": 0,
