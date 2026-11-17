@@ -8,6 +8,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Playwrightの実行ドライバ(node)自体が libatomic を必要とする（新しい版で必須になった）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Playwright(Chromium)が必要とするOS側の共有ライブラリを含めてインストール
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
