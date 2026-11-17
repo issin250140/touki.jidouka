@@ -181,8 +181,45 @@ def haversine_m(lat1, lon1, lat2, lon2) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+JS_DIAG_STATE = """
+() => {
+    const m = map.mapCtrl;
+    const layer = (map.dataLayers && map.dataLayers.noutiPolygon) || {};
+    let src = -1;
+    try { src = m.querySourceFeatures(layer.sourceName).length; } catch (e) { src = -2; }
+    const c = m.getCenter();
+    return {zoom: +m.getZoom().toFixed(1), lng: +c.lng.toFixed(5), lat: +c.lat.toFixed(5),
+            loaded: m.loaded(), sourceFeatures: src,
+            rendered: m.queryRenderedFeatures(undefined, {layers: ['noutiPolygon_fill']}).length};
+}
+"""
+
+
 def lookup_nouchi_navi(page, lat: float, lon: float, address: str) -> dict:
     """指定座標付近を農地ナビに読み込ませ、最寄りの農地区画の情報を取得する。"""
+    # 取りこぼしの原因調査用: 失敗した通信を記録する（見つからなかった時の備考に出す）
+    bad = []
+
+    def _on_response(resp):
+        if resp.status >= 400 and "maff.go.jp" in resp.url:
+            bad.append(f"{resp.status} {resp.url.split('?')[0][-40:]}")
+
+    def _on_failed(req):
+        # 自分でブロックした画像等は失敗扱いにしない
+        if "maff.go.jp" in req.url and req.resource_type not in _BLOCKED_RESOURCE_TYPES:
+            bad.append(f"FAIL {req.url.split('?')[0][-40:]}")
+
+    page.on("response", _on_response)
+    page.on("requestfailed", _on_failed)
+    t0 = time.time()
+    try:
+        return _lookup_inner(page, lat, lon, address, bad, t0)
+    finally:
+        page.remove_listener("response", _on_response)
+        page.remove_listener("requestfailed", _on_failed)
+
+
+def _lookup_inner(page, lat, lon, address, bad, t0) -> dict:
     page.goto(NOUCHI_URL, wait_until="load")
     page.wait_for_function(JS_FIND_GEOCODER, timeout=20000)
     # 地図アプリの初期化(最初の位置での区画データ読み込み)が終わるまで少し待つ
@@ -210,10 +247,15 @@ def lookup_nouchi_navi(page, lat: float, lon: float, address: str) -> dict:
     parcels = page.evaluate(JS_NEARBY_PARCELS, [lon, lat])
 
     if not parcels:
+        try:
+            st = page.evaluate(JS_DIAG_STATE)
+        except Exception as e:  # noqa: BLE001
+            st = f"state取得失敗:{e}"
+        diag = f"[診断 {time.time() - t0:.0f}秒 state={st} 失敗通信={len(bad)}件 {bad[:3]}]"
         return {
             "所在地番": "", "地目": "", "面積(m2)": "", "農振区分": "",
             "距離m": "", "近隣区画数": 0,
-            "note": "この地点付近に農地ナビ上の農地区画が見つかりませんでした",
+            "note": "この地点付近に農地ナビ上の農地区画が見つかりませんでした " + diag,
         }
 
     for p in parcels:
