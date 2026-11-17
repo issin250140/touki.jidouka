@@ -76,6 +76,9 @@ STEALTH_INIT_SCRIPT = "Object.defineProperty(navigator, 'webdriver', {get: () =>
 # CSS(stylesheet)は地図の表示サイズ計算に必要なため止めない。
 _BLOCKED_RESOURCE_TYPES = {"image", "font", "media"}
 
+# 表示サイズ。小さいほど地図の描画量が減り、非力なサーバーでも農地データの取得まで進める。
+VIEWPORT = {"width": 800, "height": 450}
+
 
 def block_heavy_resources(context) -> None:
     def _handler(route):
@@ -336,7 +339,7 @@ def main():
     results = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not args.show_browser)
-        context = browser.new_context(viewport={"width": 1280, "height": 900}, user_agent=USER_AGENT)
+        context = browser.new_context(viewport=VIEWPORT, user_agent=USER_AGENT)
         context.add_init_script(STEALTH_INIT_SCRIPT)
         block_heavy_resources(context)
         page = context.new_page()

@@ -41,6 +41,7 @@ from land_finder import (
     USER_AGENT,
     STEALTH_INIT_SCRIPT,
     block_heavy_resources,
+    VIEWPORT,
 )
 
 COORD_SPLIT_RE = re.compile(r"[,\s、，]+")
@@ -238,7 +239,7 @@ def get_page():
     if _page is None:
         _playwright = sync_playwright().start()
         _browser = _playwright.chromium.launch(headless=True)
-        _context = _browser.new_context(viewport={"width": 1280, "height": 900}, user_agent=USER_AGENT)
+        _context = _browser.new_context(viewport=VIEWPORT, user_agent=USER_AGENT)
         _context.add_init_script(STEALTH_INIT_SCRIPT)
         block_heavy_resources(_context)
         _page = _context.new_page()
