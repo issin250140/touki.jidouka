@@ -202,27 +202,49 @@ def lookup_nouchi_navi(page, lat: float, lon: float, address: str) -> dict:
     """指定座標付近を農地ナビに読み込ませ、最寄りの農地区画の情報を取得する。"""
     # 取りこぼしの原因調査用: 失敗した通信を記録する（見つからなかった時の備考に出す）
     bad = []
+    pending = {}
+    logs = []
+
+    def _short(u):
+        return u.split("?")[0][-34:]
+
+    def _on_request(req):
+        if "maff.go.jp" in req.url:
+            pending[id(req)] = f"{req.method} {_short(req.url)}"
+
+    def _done(req):
+        pending.pop(id(req), None)
 
     def _on_response(resp):
         if resp.status >= 400 and "maff.go.jp" in resp.url:
-            bad.append(f"{resp.status} {resp.url.split('?')[0][-40:]}")
+            bad.append(f"{resp.status} {_short(resp.url)}")
 
     def _on_failed(req):
+        pending.pop(id(req), None)
         # 自分でブロックした画像等は失敗扱いにしない
         if "maff.go.jp" in req.url and req.resource_type not in _BLOCKED_RESOURCE_TYPES:
-            bad.append(f"FAIL {req.url.split('?')[0][-40:]}")
+            bad.append(f"FAIL {_short(req.url)}")
 
+    def _on_console(msg):
+        t = msg.text.strip()
+        if t and ("GL Driver" not in t) and (not logs or logs[-1] != t):
+            logs.append(t[:40])
+
+    page.on("request", _on_request)
+    page.on("requestfinished", _done)
+    page.on("console", _on_console)
     page.on("response", _on_response)
     page.on("requestfailed", _on_failed)
     t0 = time.time()
     try:
-        return _lookup_inner(page, lat, lon, address, bad, t0)
+        return _lookup_inner(page, lat, lon, address, bad, t0, pending, logs)
     finally:
-        page.remove_listener("response", _on_response)
-        page.remove_listener("requestfailed", _on_failed)
+        for ev, fn in (("response", _on_response), ("requestfailed", _on_failed), ("request", _on_request),
+                       ("requestfinished", _done), ("console", _on_console)):
+            page.remove_listener(ev, fn)
 
 
-def _lookup_inner(page, lat, lon, address, bad, t0) -> dict:
+def _lookup_inner(page, lat, lon, address, bad, t0, pending, logs) -> dict:
     page.goto(NOUCHI_URL, wait_until="load")
     page.wait_for_function(JS_FIND_GEOCODER, timeout=20000)
     # 地図アプリの初期化(最初の位置での区画データ読み込み)が終わるまで少し待つ
@@ -254,7 +276,7 @@ def _lookup_inner(page, lat, lon, address, bad, t0) -> dict:
             st = page.evaluate(JS_DIAG_STATE)
         except Exception as e:  # noqa: BLE001
             st = f"state取得失敗:{e}"
-        diag = f"[診断 {time.time() - t0:.0f}秒 state={st} 失敗通信={len(bad)}件 {bad[:3]}]"
+        diag = f"[診断 {time.time() - t0:.0f}秒 state={st} 失敗通信={len(bad)}件 {bad[:3]} 未完了通信={len(pending)}件 {list(pending.values())[:4]} ログ末尾={logs[-8:]}]"
         return {
             "所在地番": "", "地目": "", "面積(m2)": "", "農振区分": "",
             "距離m": "", "近隣区画数": 0,
