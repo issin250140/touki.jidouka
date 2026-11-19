@@ -3,3 +3,9 @@ __pycache__/
 result*.csv
 app_log*.txt
 .env
+
+# パスワードや検索結果が入るファイルはGitHubに上げない
+共有管理.xlsx
+sync_log.txt
+農地検索結果.xlsx
+*.zip

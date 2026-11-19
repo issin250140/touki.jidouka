@@ -35,7 +35,9 @@ from pathlib import Path
 import openpyxl
 import requests
 
-SERVICE_ID = "srv-da85fdgn74is739j4ak0"
+# 反映先のRenderサービスID（RenderのサービスのURL「…/web/srv-xxxx」の srv-xxxx の部分）。
+# 環境変数 RENDER_SERVICE_ID で指定する。未指定のときは下の既定値を使う。
+SERVICE_ID = os.environ.get("RENDER_SERVICE_ID", "srv-da85fdgn74is739j4ak0")
 ENV_VAR_KEY = "SITE_USERS"
 API_BASE = "https://api.render.com/v1"
 
